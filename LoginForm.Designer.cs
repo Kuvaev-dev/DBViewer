@@ -31,6 +31,7 @@
             txtUsername = new TextBox();
             txtPassword = new TextBox();
             btnLogin = new Button();
+            configDbBtn = new Button();
             SuspendLayout();
             // 
             // txtUsername
@@ -57,11 +58,22 @@
             btnLogin.UseVisualStyleBackColor = true;
             btnLogin.Click += btnLogin_Click;
             // 
+            // configDbBtn
+            // 
+            configDbBtn.Location = new Point(690, 393);
+            configDbBtn.Name = "configDbBtn";
+            configDbBtn.Size = new Size(75, 23);
+            configDbBtn.TabIndex = 3;
+            configDbBtn.Text = "Config";
+            configDbBtn.UseVisualStyleBackColor = true;
+            configDbBtn.Click += configDbBtn_Click;
+            // 
             // LoginForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(configDbBtn);
             Controls.Add(btnLogin);
             Controls.Add(txtPassword);
             Controls.Add(txtUsername);
@@ -77,5 +89,6 @@
         private TextBox txtUsername;
         private TextBox txtPassword;
         private Button btnLogin;
+        private Button configDbBtn;
     }
 }

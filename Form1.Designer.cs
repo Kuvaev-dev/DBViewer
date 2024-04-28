@@ -34,12 +34,14 @@
             comboBoxSortOrder = new ComboBox();
             flowLayoutPanelParameters = new FlowLayoutPanel();
             comboBoxSortData = new ComboBox();
+            textBoxSearch = new TextBox();
+            logoutBtn = new Button();
             ((System.ComponentModel.ISupportInitialize)dataGridViewData).BeginInit();
             SuspendLayout();
             // 
             // treeView
             // 
-            treeView.Location = new Point(-1, 90);
+            treeView.Location = new Point(12, 210);
             treeView.Name = "treeView";
             treeView.Size = new Size(303, 509);
             treeView.TabIndex = 0;
@@ -48,10 +50,10 @@
             // dataGridViewData
             // 
             dataGridViewData.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize;
-            dataGridViewData.Location = new Point(321, 90);
+            dataGridViewData.Location = new Point(334, 210);
             dataGridViewData.Name = "dataGridViewData";
             dataGridViewData.RowTemplate.Height = 25;
-            dataGridViewData.Size = new Size(771, 509);
+            dataGridViewData.Size = new Size(747, 509);
             dataGridViewData.TabIndex = 1;
             // 
             // comboBoxSort
@@ -74,9 +76,9 @@
             // 
             // flowLayoutPanelParameters
             // 
-            flowLayoutPanelParameters.Location = new Point(321, 8);
+            flowLayoutPanelParameters.Location = new Point(334, 8);
             flowLayoutPanelParameters.Name = "flowLayoutPanelParameters";
-            flowLayoutPanelParameters.Size = new Size(610, 76);
+            flowLayoutPanelParameters.Size = new Size(747, 187);
             flowLayoutPanelParameters.TabIndex = 5;
             // 
             // comboBoxSortData
@@ -88,11 +90,31 @@
             comboBoxSortData.TabIndex = 6;
             comboBoxSortData.SelectedIndexChanged += comboBoxSortData_SelectedIndexChanged;
             // 
+            // textBoxSearch
+            // 
+            textBoxSearch.Location = new Point(12, 87);
+            textBoxSearch.Name = "textBoxSearch";
+            textBoxSearch.Size = new Size(261, 23);
+            textBoxSearch.TabIndex = 7;
+            textBoxSearch.TextChanged += textBoxSearch_TextChanged;
+            // 
+            // logoutBtn
+            // 
+            logoutBtn.Location = new Point(12, 127);
+            logoutBtn.Name = "logoutBtn";
+            logoutBtn.Size = new Size(75, 23);
+            logoutBtn.TabIndex = 8;
+            logoutBtn.Text = "Logout";
+            logoutBtn.UseVisualStyleBackColor = true;
+            logoutBtn.Click += logoutBtn_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(1093, 597);
+            ClientSize = new Size(1093, 731);
+            Controls.Add(logoutBtn);
+            Controls.Add(textBoxSearch);
             Controls.Add(comboBoxSortData);
             Controls.Add(flowLayoutPanelParameters);
             Controls.Add(comboBoxSortOrder);
@@ -104,6 +126,7 @@
             Load += Form1_Load;
             ((System.ComponentModel.ISupportInitialize)dataGridViewData).EndInit();
             ResumeLayout(false);
+            PerformLayout();
         }
 
         #endregion
@@ -114,5 +137,7 @@
         private ComboBox comboBoxSortOrder;
         private FlowLayoutPanel flowLayoutPanelParameters;
         private ComboBox comboBoxSortData;
+        private TextBox textBoxSearch;
+        private Button logoutBtn;
     }
 }

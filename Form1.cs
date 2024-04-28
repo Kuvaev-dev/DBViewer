@@ -1,27 +1,26 @@
 using Dapper;
-using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
-using System.Windows.Forms;
 
 namespace CloudERPDBViewer
 {
     public partial class Form1 : Form
     {
-        private readonly string connectionString = @"Data Source=localhost\sqlexpress;Initial Catalog=CloudErp;Integrated Security=True;";
-        private string selectedColumn = ""; // Хранит выбранный столбец для сортировки
-        private string selectedSortOrder = ""; // Хранит выбранное направление сортировки
-        private string selectedTableName = ""; // Хранит выбранное имя таблицы для вставки, обновления и удаления записей
+        private readonly string connectionString;
+        private string selectedColumn = "";
+        private string selectedSortOrder = "";
+        private string selectedTableName = "";
 
-        public Form1()
+        public Form1(string connstr, string username)
         {
-            InitializeComponent();
-            LoadSortColumns(); // Загрузка столбцов для сортировки
-            LoadSortOrders(); // Загрузка опций сортировки
-            LoadSortOptions(); // Загрузка опций сортировки данных
+            connectionString = connstr;
 
-            // Подписываемся на события DataGridView для обновления, вставки и удаления записей
+            InitializeComponent();
+            LoadDatabaseObjects(username);
+            LoadSortColumns();
+            LoadSortOrders();
+            LoadSortOptions();
+
             dataGridViewData.CellDoubleClick += DataGridViewData_CellDoubleClick;
             dataGridViewData.KeyDown += DataGridViewData_KeyDown;
             dataGridViewData.RowsAdded += DataGridViewData_RowsAdded;
@@ -30,70 +29,125 @@ namespace CloudERPDBViewer
         private void LoadSortOptions()
         {
             comboBoxSortData.Items.AddRange(new string[] {
-        "Alphabetical",
-        "Reverse Alphabetical",
-        "First 5 Rows",
-        "First 10 Rows"
-    });
+                "Alphabetical",
+                "Reverse Alphabetical",
+                "First 5 Rows",
+                "First 10 Rows"
+            });
         }
 
         private void Form1_Load(object sender, EventArgs e)
         {
-            LoadDatabaseObjects();
+
         }
 
-        private void LoadDatabaseObjects()
+        private void LoadDatabaseObjects(string username)
         {
             using (var connection = new SqlConnection(connectionString))
             {
                 connection.Open();
 
-                // Load tables, procedures, triggers, and views
-                var sql = @"
-                    SELECT TABLE_NAME as Name, 'Table' as Type FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'
-                    UNION
-                    SELECT SPECIFIC_NAME as Name, 'Procedure' as Type FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_TYPE='PROCEDURE'
-                    UNION
-                    SELECT name as Name, 'Trigger' as Type FROM sys.triggers
-                    UNION
-                    SELECT name as Name, 'View' as Type FROM sys.views";
-                var objects = connection.Query(sql);
-
-                treeView.Nodes.Clear();
-
-                TreeNode tablesNode = new TreeNode("Tables");
-                TreeNode proceduresNode = new TreeNode("Procedures");
-                TreeNode triggersNode = new TreeNode("Triggers");
-                TreeNode viewsNode = new TreeNode("Views");
-
-                foreach (var obj in objects)
+                if (IsAdmin(username))
                 {
-                    TreeNode node = new TreeNode(obj.Name.ToString());
-                    node.Tag = obj.Type.ToString();
+                    LoadObjectsForUser(connection, username, "Tables");
+                    LoadObjectsForUser(connection, username, "Triggers");
+                    LoadObjectsForUser(connection, username, "Procedures");
+                    LoadObjectsForUser(connection, username, "Views");
+                }
+                else if (IsEmployee(username))
+                {
+                    LoadObjectsForUser(connection, username, "Tables");
+                    LoadObjectsForUser(connection, username, "Procedures");
+                    LoadObjectsForUser(connection, username, "Views");
+                }
+                else if (IsCustomer(username))
+                {
+                    LoadObjectsForUser(connection, username, "Tables");
+                    LoadObjectsForUser(connection, username, "Views");
+                }
+                else
+                {
+                    throw new ArgumentException("Invalid username");
+                }
+            }
+        }
 
-                    switch (obj.Type.ToString())
+
+        private void LoadObjectsForUser(SqlConnection connection, string username, string objectType)
+        {
+            string sqlQuery = "";
+
+            switch (objectType)
+            {
+                case "Tables":
+                    sqlQuery = @"
+                SELECT DISTINCT t.name
+                FROM sys.tables t
+                INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE s.name = 'dbo' AND t.name NOT LIKE 'sys%' AND EXISTS (
+                    SELECT 1
+                    FROM sys.database_permissions dp
+                    WHERE dp.major_id = t.object_id
+                    AND dp.grantee_principal_id = USER_ID(@Username)
+                )";
+                    break;
+                case "Triggers":
+                    sqlQuery = @"
+                SELECT DISTINCT tr.name
+                FROM sys.triggers tr
+                INNER JOIN sys.objects o ON tr.parent_id = o.object_id
+                INNER JOIN sys.schemas s ON o.schema_id = s.schema_id
+                WHERE s.name = 'dbo' AND EXISTS (
+                    SELECT 1
+                    FROM sys.database_permissions dp
+                    WHERE dp.major_id = tr.object_id
+                    AND dp.grantee_principal_id = USER_ID(@Username)
+                )";
+                    break;
+                case "Procedures":
+                    sqlQuery = @"
+                SELECT DISTINCT p.name
+                FROM sys.procedures p
+                INNER JOIN sys.schemas s ON p.schema_id = s.schema_id
+                WHERE s.name = 'dbo' AND EXISTS (
+                    SELECT 1
+                    FROM sys.database_permissions dp
+                    WHERE dp.major_id = p.object_id
+                    AND dp.grantee_principal_id = USER_ID(@Username)
+                )";
+                    break;
+                case "Views":
+                    sqlQuery = @"
+                SELECT DISTINCT v.name
+                FROM sys.views v
+                INNER JOIN sys.schemas s ON v.schema_id = s.schema_id
+                WHERE s.name = 'dbo' AND EXISTS (
+                    SELECT 1
+                    FROM sys.database_permissions dp
+                    WHERE dp.major_id = v.object_id
+                    AND dp.grantee_principal_id = USER_ID(@Username)
+                )";
+                    break;
+                default:
+                    throw new ArgumentException("Invalid objectType");
+            }
+
+            var objectsData = connection.Query(sqlQuery, new { Username = username });
+
+            if (objectsData != null && objectsData.Any())
+            {
+                TreeNode objectsNode = new TreeNode(objectType);
+
+                foreach (var obj in objectsData)
+                {
+                    TreeNode node = new TreeNode(obj.name.ToString())
                     {
-                        case "Table":
-                            tablesNode.Nodes.Add(node);
-                            break;
-                        case "Procedure":
-                            proceduresNode.Nodes.Add(node);
-                            break;
-                        case "Trigger":
-                            triggersNode.Nodes.Add(node);
-                            break;
-                        case "View":
-                            viewsNode.Nodes.Add(node);
-                            break;
-                        default:
-                            break;
-                    }
+                        Tag = objectType
+                    };
+                    objectsNode.Nodes.Add(node);
                 }
 
-                treeView.Nodes.Add(tablesNode);
-                treeView.Nodes.Add(proceduresNode);
-                treeView.Nodes.Add(triggersNode);
-                treeView.Nodes.Add(viewsNode);
+                treeView.Nodes.Add(objectsNode);
             }
         }
 
@@ -103,26 +157,37 @@ namespace CloudERPDBViewer
             {
                 connection.Open();
 
-                var sql = $"SELECT name, TYPE_NAME(user_type_id) AS type FROM sys.parameters WHERE object_id = OBJECT_ID('{procedureName}')";
-                var parameters = connection.Query(sql);
+                var sql = @"
+                    SELECT 
+                        name,
+                        TYPE_NAME(user_type_id) AS type 
+                    FROM 
+                        sys.parameters 
+                    WHERE 
+                        object_id = OBJECT_ID(@ProcedureName)";
 
-                // Очищаем предыдущие поля ввода
+                var parameters = connection.Query(sql, new { ProcedureName = procedureName });
+
                 flowLayoutPanelParameters.Controls.Clear();
 
-                // Создаем поля ввода для каждого параметра
                 foreach (var param in parameters)
                 {
-                    Label label = new Label();
-                    label.Text = param.name.ToString() + ":";
-                    TextBox textBox = new TextBox();
-                    textBox.Name = param.name.ToString();
+                    Label label = new()
+                    {
+                        Text = param.name.ToString() + ":"
+                    };
+                    TextBox textBox = new()
+                    {
+                        Name = param.name.ToString()
+                    };
                     flowLayoutPanelParameters.Controls.Add(label);
                     flowLayoutPanelParameters.Controls.Add(textBox);
                 }
 
-                // Добавляем кнопку для вызова процедуры
-                Button executeButton = new Button();
-                executeButton.Text = "Вызвать процедуру";
+                Button executeButton = new()
+                {
+                    Text = "Вызвать процедуру"
+                };
                 executeButton.Click += (sender, e) =>
                 {
                     ExecuteProcedure(procedureName);
@@ -139,7 +204,6 @@ namespace CloudERPDBViewer
 
                 var parameters = new DynamicParameters();
 
-                // Собираем параметры из текстовых полей
                 foreach (Control control in flowLayoutPanelParameters.Controls)
                 {
                     if (control is TextBox textBox)
@@ -148,7 +212,6 @@ namespace CloudERPDBViewer
                     }
                 }
 
-                // Вызываем процедуру с параметрами
                 var dataTable = new DataTable();
                 using (var command = new SqlCommand(procedureName, connection))
                 {
@@ -157,20 +220,18 @@ namespace CloudERPDBViewer
                     {
                         command.Parameters.AddWithValue(parameter, parameters.Get<object>(parameter));
                     }
-                    using (var adapter = new SqlDataAdapter(command))
-                    {
-                        adapter.Fill(dataTable);
-                    }
+
+                    using var adapter = new SqlDataAdapter(command);
+                    adapter.Fill(dataTable);
                 }
 
-                // Проверяем данные перед привязкой к DataGridView
                 if (dataTable.Rows.Count > 0)
                 {
                     dataGridViewData.DataSource = dataTable;
                 }
                 else
                 {
-                    MessageBox.Show("Процедура не вернула данные.");
+                    MessageBox.Show("Procedure did not return any data.");
                 }
             }
         }
@@ -181,33 +242,17 @@ namespace CloudERPDBViewer
             {
                 connection.Open();
 
-                // Получаем имя таблицы, к которой привязан триггер
-                var sql = $"SELECT OBJECT_NAME(parent_id) AS parent_table FROM sys.triggers WHERE name = '{triggerName}'";
-                var tableName = connection.QueryFirstOrDefault<string>(sql);
+                var sql = "SELECT OBJECT_NAME(parent_id) AS parent_table FROM sys.triggers WHERE name = @TriggerName";
+                var tableName = connection.QueryFirstOrDefault<string>(sql, new { TriggerName = triggerName });
 
                 if (!string.IsNullOrEmpty(tableName))
                 {
-                    // Получаем имена столбцов таблицы
-                    sql = $"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{tableName}'";
-                    var columns = connection.Query<string>(sql);
+                    // Load trigger fields UI
 
-                    // Очищаем предыдущие поля ввода
-                    flowLayoutPanelParameters.Controls.Clear();
-
-                    // Создаем поля ввода для каждого столбца таблицы
-                    foreach (var column in columns)
+                    Button executeTriggerButton = new()
                     {
-                        Label label = new Label();
-                        label.Text = column + ":";
-                        TextBox textBox = new TextBox();
-                        textBox.Name = column;
-                        flowLayoutPanelParameters.Controls.Add(label);
-                        flowLayoutPanelParameters.Controls.Add(textBox);
-                    }
-
-                    // Добавляем кнопку для вызова триггера
-                    Button executeTriggerButton = new Button();
-                    executeTriggerButton.Text = "Вызвать триггер";
+                        Text = "Execute Trigger"
+                    };
                     executeTriggerButton.Click += (sender, e) =>
                     {
                         ExecuteTrigger(triggerName, tableName);
@@ -216,29 +261,75 @@ namespace CloudERPDBViewer
                 }
                 else
                 {
-                    MessageBox.Show("Не удалось определить таблицу, к которой привязан триггер.");
+                    MessageBox.Show("Failed to determine the table associated with the trigger.");
                 }
             }
         }
 
+        private bool IsAdmin(string username)
+        {
+            using (var connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                var sql = "SELECT COUNT(*) FROM sys.database_principals WHERE name = @Username AND IS_ROLEMEMBER('db_owner', name) = 1";
+                var count = connection.ExecuteScalar<int>(sql, new { Username = username });
+
+                return count > 0;
+            }
+        }
+
+        private bool IsEmployee(string username)
+        {
+            using (var connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                var sql = "SELECT COUNT(*) FROM sys.database_principals WHERE name = @Username AND IS_ROLEMEMBER('employee', name) = 1";
+                var count = connection.ExecuteScalar<int>(sql, new { Username = username });
+
+                return count > 0;
+            }
+        }
+
+        private bool IsCustomer(string username)
+        {
+            using (var connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                var sql = "SELECT COUNT(*) FROM sys.database_principals WHERE name = @Username AND IS_ROLEMEMBER('customer', name) = 1";
+                var count = connection.ExecuteScalar<int>(sql, new { Username = username });
+
+                return count > 0;
+            }
+        }
+
+
         private void ExecuteTrigger(string triggerName, string tableName)
         {
-            // Здесь можно выполнить действия, связанные с вызовом триггера, например, выполнить изменение данных в таблице
-            MessageBox.Show("Триггер вызван успешно.");
+            // Implement trigger execution logic
+            MessageBox.Show("Trigger executed successfully.");
         }
 
         private void LoadData(string objectName)
         {
-            selectedTableName = objectName; // Сохраняем имя выбранной таблицы
+            selectedTableName = objectName;
+
+            if (IsTrigger(objectName))
+            {
+                // Не выполняем никаких действий для триггера
+                return;
+            }
 
             using (var connection = new SqlConnection(connectionString))
             {
                 connection.Open();
-                var sql = $"SELECT * FROM {objectName}"; // Initialize SQL command text
+                var sql = $"SELECT * FROM {objectName}";
 
-                if (!string.IsNullOrEmpty(selectedColumn)) // Check if a column is selected for sorting
+                if (!string.IsNullOrEmpty(selectedColumn))
                 {
-                    sql += $" ORDER BY {selectedColumn} {selectedSortOrder}"; // Append ORDER BY clause
+                    sql += $" ORDER BY {selectedColumn} {selectedSortOrder}";
                 }
 
                 var dataAdapter = new SqlDataAdapter(sql, connection);
@@ -249,34 +340,50 @@ namespace CloudERPDBViewer
             }
         }
 
+        private bool IsTrigger(string objectName)
+        {
+            // Проверяем, является ли объект триггером
+            using (var connection = new SqlConnection(connectionString))
+            {
+                connection.Open();
+
+                var sql = "SELECT COUNT(*) FROM sys.triggers WHERE name = @TriggerName";
+                var count = connection.ExecuteScalar<int>(sql, new { TriggerName = objectName });
+
+                return count > 0;
+            }
+        }
+
         private void LoadInsertControls(string tableName)
         {
             using (var connection = new SqlConnection(connectionString))
             {
                 connection.Open();
 
-                // Получаем информацию о столбцах таблицы
                 var sql = $"SELECT COLUMN_NAME, COLUMNPROPERTY(object_id(TABLE_NAME), COLUMN_NAME, 'IsIdentity') AS IsIdentity FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = '{tableName}'";
                 var columnsInfo = connection.Query(sql);
 
-                // Создаем текстовые поля для каждого столбца таблицы, исключая столбцы с автоинкрементом
                 foreach (var columnInfo in columnsInfo)
                 {
-                    // Пропускаем столбцы с автоинкрементом
                     if (columnInfo.IsIdentity == 1)
                         continue;
 
-                    Label label = new Label();
-                    label.Text = columnInfo.COLUMN_NAME + ":";
-                    TextBox textBox = new TextBox();
-                    textBox.Name = columnInfo.COLUMN_NAME;
+                    Label label = new()
+                    {
+                        Text = columnInfo.COLUMN_NAME + ":"
+                    };
+                    TextBox textBox = new()
+                    {
+                        Name = columnInfo.COLUMN_NAME
+                    };
                     flowLayoutPanelParameters.Controls.Add(label);
                     flowLayoutPanelParameters.Controls.Add(textBox);
                 }
 
-                // Добавляем кнопку для вставки записи
-                Button addButton = new Button();
-                addButton.Text = "Добавить";
+                Button addButton = new()
+                {
+                    Text = "Добавить"
+                };
                 addButton.Click += (sender, e) =>
                 {
                     InsertRecord(tableName);
@@ -294,7 +401,6 @@ namespace CloudERPDBViewer
                 var columns = new List<string>();
                 var values = new List<string>();
 
-                // Собираем имена столбцов и значения из текстовых полей, пропуская первичный ключ
                 foreach (Control control in flowLayoutPanelParameters.Controls)
                 {
                     if (control is TextBox textBox && textBox.Name != dataGridViewData.Columns[0].HeaderText)
@@ -304,7 +410,6 @@ namespace CloudERPDBViewer
                     }
                 }
 
-                // Формируем SQL-запрос на основе введенных данных
                 var sql = $"INSERT INTO {tableName} ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values.Select(v => $"'{v}'"))})";
 
                 try
@@ -314,7 +419,6 @@ namespace CloudERPDBViewer
                         command.ExecuteNonQuery();
                     }
 
-                    // Обновляем DataGridView после вставки
                     LoadData(selectedTableName);
                     MessageBox.Show("Запись успешно добавлена.");
                 }
@@ -331,9 +435,8 @@ namespace CloudERPDBViewer
             {
                 connection.Open();
 
-                var primaryKey = dataGridViewData.Rows[rowIndex].Cells[0].Value; // Предположим, что первый столбец - это первичный ключ
+                var primaryKey = dataGridViewData.Rows[rowIndex].Cells[0].Value;
 
-                // Формируем SQL-запрос на удаление записи
                 var sql = $"DELETE FROM {tableName} WHERE {dataGridViewData.Columns[0].HeaderText} = '{primaryKey}'";
 
                 try
@@ -343,7 +446,6 @@ namespace CloudERPDBViewer
                         command.ExecuteNonQuery();
                     }
 
-                    // Обновляем DataGridView после удаления
                     LoadData(selectedTableName);
                     MessageBox.Show("Запись успешно удалена.");
                 }
@@ -360,9 +462,8 @@ namespace CloudERPDBViewer
             {
                 connection.Open();
 
-                var primaryKey = dataGridViewData.Rows[rowIndex].Cells[0].Value; // Предположим, что первый столбец - это первичный ключ
+                var primaryKey = dataGridViewData.Rows[rowIndex].Cells[0].Value;
 
-                // Формируем SQL-запрос на обновление записи
                 var sql = $"UPDATE {tableName} SET {columnName} = '{newValue}' WHERE {dataGridViewData.Columns[0].HeaderText} = '{primaryKey}'";
 
                 try
@@ -372,7 +473,6 @@ namespace CloudERPDBViewer
                         command.ExecuteNonQuery();
                     }
 
-                    // Обновляем DataGridView после обновления
                     LoadData(tableName);
                     MessageBox.Show("Запись успешно обновлена.");
                 }
@@ -383,10 +483,8 @@ namespace CloudERPDBViewer
             }
         }
 
-
         private void LoadSortColumns()
         {
-            // Добавляем столбцы для сортировки в комбо-бокс
             foreach (DataGridViewColumn column in dataGridViewData.Columns)
             {
                 comboBoxSort.Items.Add(column.HeaderText);
@@ -403,7 +501,6 @@ namespace CloudERPDBViewer
 
         private void treeView_AfterSelect(object sender, TreeViewEventArgs e)
         {
-            // Очистить панель с полями
             flowLayoutPanelParameters.Controls.Clear();
 
             if (e.Node.Tag != null)
@@ -422,15 +519,14 @@ namespace CloudERPDBViewer
                 else
                 {
                     LoadData(selectedObjectName);
-                    LoadInsertControls(selectedObjectName); // Загрузка контролов для вставки записи
-                    LoadSortColumns(); // Загрузка столбцов для сортировки
+                    LoadInsertControls(selectedObjectName);
+                    LoadSortColumns();
                 }
             }
         }
 
         private void DataGridViewData_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
-            // Обновляем запись при двойном щелчке на ячейке
             if (e.RowIndex >= 0)
             {
                 DataGridViewRow selectedRow = dataGridViewData.Rows[e.RowIndex];
@@ -447,10 +543,8 @@ namespace CloudERPDBViewer
 
         private void DataGridViewData_KeyDown(object sender, KeyEventArgs e)
         {
-            // Удаляем запись при нажатии клавиши Delete
             if (e.KeyCode == Keys.Delete && dataGridViewData.SelectedRows.Count > 0)
             {
-                // Нежно ищем выделенную запись и удаляем её
                 int rowIndex = dataGridViewData.SelectedRows[0].Index;
                 DeleteRecord(selectedTableName, rowIndex);
             }
@@ -502,9 +596,9 @@ namespace CloudERPDBViewer
                 connection.Open();
                 var sql = $"SELECT TOP {n} * FROM {tableName}";
 
-                if (!string.IsNullOrEmpty(selectedColumn)) // Check if a column is selected for sorting
+                if (!string.IsNullOrEmpty(selectedColumn))
                 {
-                    sql += $" ORDER BY {selectedColumn} {selectedSortOrder}"; // Append ORDER BY clause
+                    sql += $" ORDER BY {selectedColumn} {selectedSortOrder}";
                 }
 
                 var dataAdapter = new SqlDataAdapter(sql, connection);
@@ -513,6 +607,95 @@ namespace CloudERPDBViewer
 
                 dataGridViewData.DataSource = dataTable;
             }
+        }
+
+        private void textBoxSearch_TextChanged(object sender, EventArgs e)
+        {
+            string searchText = textBoxSearch.Text.Trim();
+
+            if (!string.IsNullOrEmpty(selectedTableName))
+            {
+                using (var connection = new SqlConnection(connectionString))
+                {
+                    connection.Open();
+
+                    var sql = $"SELECT * FROM {selectedTableName} WHERE ";
+                    bool isFirstCondition = true;
+
+                    foreach (DataGridViewColumn column in dataGridViewData.Columns)
+                    {
+                        if (column.Index != 0)
+                        {
+                            if (!isFirstCondition)
+                            {
+                                sql += " OR ";
+                            }
+                            sql += $"{column.HeaderText} LIKE '%{searchText}%'";
+                            isFirstCondition = false;
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(searchText))
+                    {
+                        var dataAdapter = new SqlDataAdapter(sql, connection);
+                        var dataTable = new DataTable();
+                        dataAdapter.Fill(dataTable);
+                        dataGridViewData.DataSource = dataTable;
+                    }
+                    else
+                    {
+                        LoadData(selectedTableName);
+                    }
+                }
+            }
+        }
+
+        private void ShowDatabaseConfigForm()
+        {
+            DatabaseConfigForm configForm = new();
+            configForm.ConnectionStringSaved += ConfigForm_ConnectionStringSaved;
+            configForm.ShowDialog();
+        }
+
+        private void ConfigForm_ConnectionStringSaved(object sender, string connectionString)
+        {
+            MessageBox.Show("Полученная строка подключения: " + connectionString);
+            DataTable tableNames = GetTableNames(connectionString);
+            dataGridViewData.DataSource = tableNames;
+        }
+
+        private static DataTable GetTableNames(string connectionString)
+        {
+            DataTable tableNames = new();
+
+            using (SqlConnection connection = new(connectionString))
+            {
+                try
+                {
+                    connection.Open();
+                    SqlCommand command = new("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'", connection);
+                    SqlDataReader reader = command.ExecuteReader();
+                    tableNames.Load(reader);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Ошибка при получении списка таблиц: " + ex.Message);
+                }
+            }
+
+            return tableNames;
+        }
+
+        private void buttonOpenConfigForm_Click(object sender, EventArgs e)
+        {
+            ShowDatabaseConfigForm();
+        }
+
+        private void logoutBtn_Click(object sender, EventArgs e)
+        {
+            Close();
+            LoginForm loginForm = new(connectionString);
+            loginForm.Show();
         }
     }
 }

@@ -1,23 +1,15 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Data.SqlClient;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
+﻿using System.Data.SqlClient;
 
 namespace CloudERPDBViewer
 {
     public partial class LoginForm : Form
     {
-        private readonly string connectionString = @"Data Source=localhost\sqlexpress;Initial Catalog=master;Integrated Security=True;";
+        private string connectionString;
 
-        public LoginForm()
+        public LoginForm(string connectionString)
         {
             InitializeComponent();
+            this.connectionString = connectionString;
         }
 
         private void btnLogin_Click(object sender, EventArgs e)
@@ -27,16 +19,13 @@ namespace CloudERPDBViewer
 
             if (AuthenticateUser(username, password))
             {
-                // Пользователь успешно аутентифицирован
                 MessageBox.Show("Вы успешно вошли в систему.");
-                // Открываем основную форму приложения или выполняем другие действия после аутентификации
-                Form1 mainForm = new Form1();
+                Form1 mainForm = new(connectionString, username);
                 mainForm.Show();
-                this.Hide();
+                Hide();
             }
             else
             {
-                // Пользователь не аутентифицирован
                 MessageBox.Show("Ошибка аутентификации. Пожалуйста, проверьте свой логин и пароль.");
             }
         }
@@ -48,7 +37,6 @@ namespace CloudERPDBViewer
                 try
                 {
                     connection.Open();
-                    // Проверяем существует ли такой пользователь и правильный ли пароль
                     string query = "SELECT COUNT(*) FROM sys.sql_logins WHERE name = @Username AND PWDCOMPARE(@Password, password_hash) = 1";
                     using (var command = new SqlCommand(query, connection))
                     {
@@ -69,6 +57,18 @@ namespace CloudERPDBViewer
         private void LoginForm_Load(object sender, EventArgs e)
         {
 
+        }
+
+        private void configDbBtn_Click(object sender, EventArgs e)
+        {
+            DatabaseConfigForm databaseConfigForm = new();
+            databaseConfigForm.ConnectionStringSaved += DatabaseConfigForm_ConnectionStringSaved;
+            databaseConfigForm.Show();
+        }
+
+        private void DatabaseConfigForm_ConnectionStringSaved(object sender, string e)
+        {
+            connectionString = e;
         }
     }
 }
