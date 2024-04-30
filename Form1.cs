@@ -485,6 +485,7 @@ namespace CloudERPDBViewer
 
         private void LoadSortColumns()
         {
+            comboBoxSort.Items.Clear();
             foreach (DataGridViewColumn column in dataGridViewData.Columns)
             {
                 comboBoxSort.Items.Add(column.HeaderText);
